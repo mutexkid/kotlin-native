@@ -1023,7 +1023,7 @@ internal object Devirtualization {
                 else IrPrivateFunctionCallImpl(
                         startOffset         = startOffset,
                         endOffset           = endOffset,
-                        type                = value.type, // TODO: What type is actually must be here?
+                        type                = value.type, // TODO: This is obviously incorrect but this type is never used since this is the last lowering in the pipeline.
                         valueArgumentsCount = 1,
                         virtualCallee       = null,
                         dfgSymbol           = coercion,
@@ -1040,9 +1040,15 @@ internal object Devirtualization {
             }
         }
 
-        fun <T : IrElement> IrStatementsBuilder<T>.irSplitCoercion(expression: IrExpression) =
-                if (!expression.isBoxOrUnboxCall())
-                    PossiblyCoercedValue(irTemporary(expression), null)
+        fun <T : IrElement> IrStatementsBuilder<T>.irSplitCoercion(expression: IrExpression, actualType: IrType) =
+                if (!expression.isBoxOrUnboxCall()) {
+                    val castedExpression =
+                            if (expression.type == actualType)
+                                expression
+                            else
+                                irImplicitCast(expression, actualType)
+                    PossiblyCoercedValue(irTemporary(castedExpression), null)
+                }
                 else {
                     val coercion = expression as IrCall
                     PossiblyCoercedValue(
@@ -1175,6 +1181,7 @@ internal object Devirtualization {
                     return expression
 
                 val descriptor = expression.descriptor
+                val function = expression.symbol.owner
                 val owner = (descriptor.containingDeclaration as ClassDescriptor)
                 val maxUnfoldFactor = if (owner.isInterface) 3 else 1
                 if (possibleCallees.size > maxUnfoldFactor) {
@@ -1206,20 +1213,20 @@ internal object Devirtualization {
                         optimize && possibleCallees.size == 1 -> { // Monomorphic callsite.
                             val actualCallee = possibleCallees[0].callee as DataFlowIR.FunctionSymbol.Declared
                             irBlock(expression) {
-                                val receiver = irSplitCoercion(dispatchReceiver)
-                                val extensionReceiver = expression.extensionReceiver?.let { irSplitCoercion(it) }
+                                val receiver = irSplitCoercion(dispatchReceiver, function.dispatchReceiverParameter!!.type)
+                                val extensionReceiver = expression.extensionReceiver?.let { irSplitCoercion(it, function.extensionReceiverParameter!!.type) }
                                 val parameters = expression.descriptor.valueParameters.associate {
-                                    it to irSplitCoercion(expression.getValueArgument(it)!!)
+                                    it to irSplitCoercion(expression.getValueArgument(it)!!, function.valueParameters[it.index].type)
                                 }
                                 +irDevirtualizedCall(expression, type, actualCallee, receiver, extensionReceiver, parameters)
                             }
                         }
 
                         else -> irBlock(expression) {
-                            val receiver = irSplitCoercion(dispatchReceiver)
-                            val extensionReceiver = expression.extensionReceiver?.let { irSplitCoercion(it) }
+                            val receiver = irSplitCoercion(dispatchReceiver, function.dispatchReceiverParameter!!.type)
+                            val extensionReceiver = expression.extensionReceiver?.let { irSplitCoercion(it, function.extensionReceiverParameter!!.type) }
                             val parameters = expression.descriptor.valueParameters.associate {
-                                it to irSplitCoercion(expression.getValueArgument(it)!!)
+                                it to irSplitCoercion(expression.getValueArgument(it)!!, function.valueParameters[it.index].type)
                             }
                             val typeInfo = irTemporary(irCall(context.ir.symbols.getObjectTypeInfo).apply {
                                 putValueArgument(0, receiver.getFullValue(this@irBlock))
