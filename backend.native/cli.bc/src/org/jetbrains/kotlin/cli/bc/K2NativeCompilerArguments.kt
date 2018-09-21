@@ -99,6 +99,9 @@ class K2NativeCompilerArguments : CommonCompilerArguments() {
     @Argument(value=  "-Xlist-phases", deprecatedName = "--list_phases", description = "List all backend phases")
     var listPhases: Boolean = false
 
+    @Argument(value = "-Xnew-backend", description = "Use new LLVM backend")
+    var newBackend: Boolean = false
+
     @Argument(value = "-Xprint-bitcode", deprecatedName = "--print_bitcode", description = "Print llvm bitcode")
     var printBitCode: Boolean = false
 
@@ -144,9 +147,6 @@ class K2NativeCompilerArguments : CommonCompilerArguments() {
             description = "Paths to friend modules"
     )
     var friendModules: String? = null
-
-    @Argument(value = "--legacy-backend", description = "Use legacy LLVM backend")
-    var legacyBackend: Boolean = false
 
     override fun configureAnalysisFlags(collector: MessageCollector): MutableMap<AnalysisFlag<*>, Any> =
             super.configureAnalysisFlags(collector).also {
